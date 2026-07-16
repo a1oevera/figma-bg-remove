@@ -61,4 +61,3 @@ re-pasting it.
   request after is fast.
 - **Jagged edges** — turn on Smooth edges, or swap `MODEL_NAME` in
   `server.py` (options: `isnet-general-use`, `u2net`, `birefnet-general`).
-# six-hearts-foundation
