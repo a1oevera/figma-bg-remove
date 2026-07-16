@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font: 12px/1.4 "Inter", -apple-system, sans-serif; margin: 0; padding: 14px; color: #1b1b2e; }
+  label { display: block; font-weight: 600; margin-bottom: 4px; }
+  input[type="text"] {
+    width: 100%; box-sizing: border-box; padding: 7px 8px;
+    border: 1px solid #ccc; border-radius: 6px; margin-bottom: 10px; font-size: 12px;
+  }
+  .row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+  button {
+    width: 100%; padding: 9px 0; border: none; border-radius: 6px;
+    background: #ff5ca8; color: #fff; font-weight: 700; font-size: 13px; cursor: pointer;
+  }
+  button:disabled { background: #ddd; cursor: default; }
+  #status { margin-top: 10px; min-height: 30px; color: #555; }
+  #status.err { color: #c92a2a; }
+</style>
+</head>
+<body>
+  <label for="url">Server URL</label>
+  <input type="text" id="url" value="http://localhost:5001" spellcheck="false">
+
+  <div class="row">
+    <input type="checkbox" id="matting">
+    <label for="matting" style="margin:0; font-weight:400;">Smooth edges (alpha matting — slower, better on hair)</label>
+  </div>
+
+  <button id="go">Remove background</button>
+  <div id="status">Select one image layer, then hit the button.</div>
+
+<script>
+  var urlInput = document.getElementById("url");
+  var mattingBox = document.getElementById("matting");
+  var goBtn = document.getElementById("go");
+  var status = document.getElementById("status");
+  var pending = null; // node info while a request is in flight
+
+  function setStatus(text, isErr) {
+    status.textContent = text;
+    status.className = isErr ? "err" : "";
+  }
+
+  goBtn.onclick = function () {
+    parent.postMessage({ pluginMessage: { type: "save-url", serverUrl: urlInput.value } }, "*");
+    parent.postMessage({ pluginMessage: { type: "export-selection" } }, "*");
+    goBtn.disabled = true;
+    setStatus("Exporting selection…");
+  };
+
+  onmessage = function (event) {
+    var msg = event.data.pluginMessage;
+    if (!msg) return;
+
+    if (msg.type === "init") {
+      urlInput.value = msg.serverUrl;
+      return;
+    }
+
+    if (msg.type === "error") {
+      setStatus(msg.message, true);
+      goBtn.disabled = false;
+      return;
+    }
+
+    if (msg.type === "done") {
+      setStatus("Done. Select another layer to go again.");
+      goBtn.disabled = false;
+      return;
+    }
+
+    if (msg.type === "image-bytes") {
+      pending = msg;
+      var base = urlInput.value.replace(/\/+$/, "");
+      var endpoint = base + "/remove" + (mattingBox.checked ? "?matting=1" : "");
+      setStatus("Removing background… (first run loads the model, give it a sec)");
+
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: msg.bytes.buffer ? msg.bytes : new Uint8Array(msg.bytes)
+      })
+        .then(function (res) {
+          if (!res.ok) {
+            return res.text().then(function (t) { throw new Error("Server said " + res.status + ": " + t); });
+          }
+          return res.arrayBuffer();
+        })
+        .then(function (buf) {
+          parent.postMessage({
+            pluginMessage: {
+              type: "processed-bytes",
+              bytes: Array.from(new Uint8Array(buf)),
+              width: pending.width,
+              height: pending.height,
+              x: pending.x,
+              y: pending.y,
+              name: pending.name
+            }
+          }, "*");
+        })
+        .catch(function (err) {
+          // The classic failure: server not running, wrong URL, or CORS.
+          setStatus(
+            err.message +
+            " — is the server running? If you're on a ngrok URL, make sure it matches the one ngrok printed.",
+            true
+          );
+          goBtn.disabled = false;
+        });
+    }
+  };
+</script>
+</body>
+</html>

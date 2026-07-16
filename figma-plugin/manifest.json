@@ -1,0 +1,12 @@
+{
+  "name": "Background Remover (local)",
+  "id": "background-remover-local",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "Sends the selected image to the user's own local/ngrok background-removal server."
+  }
+}
